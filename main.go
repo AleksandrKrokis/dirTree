@@ -1,7 +1,7 @@
 package main
 
 import (
-	"strings"
+	// "strings"
 	"strconv"
 	"io"
 	"os"
@@ -12,7 +12,6 @@ import (
 
 type fileSystemPoint struct {
 	path string
-	rootPath string
 }
 
 func (f *fileSystemPoint) Name() string {
@@ -24,6 +23,7 @@ func (f *fileSystemPoint) Size() int {
 	if (err != nil) {
 		panic("wrong path")
 	}
+	defer dir.Close()
 	itemInfo, err := dir.Stat()
 	if err != nil {
 		panic("can not read stat")
@@ -39,6 +39,7 @@ func (f *fileSystemPoint) IsDir() bool {
 	if (err != nil) {
 		panic("wrong path")
 	}
+	defer dir.Close()
 	itemInfo, err := dir.Stat()
 	if err != nil {
 		panic("can not read stat")
@@ -46,7 +47,7 @@ func (f *fileSystemPoint) IsDir() bool {
 	return itemInfo.IsDir()
 }
 
-func (f *fileSystemPoint) ReadDir(includeFiles bool) (content []fileSystemPoint) {
+func (f *fileSystemPoint) Content(includeFiles bool) (content []fileSystemPoint) {
 	if !f.IsDir() {
 		return content
 	}
@@ -54,6 +55,7 @@ func (f *fileSystemPoint) ReadDir(includeFiles bool) (content []fileSystemPoint)
 	if (err != nil) {
 		panic("wrong path")
 	}
+	defer dir.Close()
 	dirInfo, err := dir.Readdir(0)
 	if err != nil {
 		panic("can't read the dir")
@@ -62,38 +64,31 @@ func (f *fileSystemPoint) ReadDir(includeFiles bool) (content []fileSystemPoint)
 
 	for _, item := range dirInfo {
 		if item.IsDir() {
-			content = append(content, fileSystemPoint{filepath.Join(f.path, item.Name()), f.rootPath})
+			content = append(content, fileSystemPoint{filepath.Join(f.path, item.Name())})
 		} else if includeFiles {
-			content = append(content, fileSystemPoint{filepath.Join(f.path, item.Name()), f.rootPath})
+			content = append(content, fileSystemPoint{filepath.Join(f.path, item.Name())})
 		}
 	}
 	return
 }
 
-func (f *fileSystemPoint) Draw(includeFiles bool) (line string) {
-	const simpleOffset = "│\t"
-	const emptyOffset = "\t"
-	const connectionOffset = "├───"
-	const connectionOffsetLast = "└───"
-
-	pathArr := strings.Split(strings.TrimLeft(f.path, filepath.Dir(f.rootPath)), string(os.PathSeparator))
-
-	content := f.ReadDir(includeFiles)
+func (f *fileSystemPoint) Draw(includeFiles bool, preffix string) (line string) {
+	content := f.Content(includeFiles)
 	for i, item := range content {
-		for index, pathPart := range pathArr {
-			if pathPart == item.Name() {
-				line += connectionOffset
-			} else if index != 0 {
-				line += simpleOffset
-			}
+		connectionOffset := "├───"
+		offset := "│\t"
+
+		if i == len(content) - 1 {
+			connectionOffset = "└───"
+			offset = "\t"
 		}
-		if (i+1 == len(content)) {
-			line += connectionOffsetLast + item.Name()
-		} else {
-			line += connectionOffset + item.Name()
-		}
+
+		line += preffix
+		line += connectionOffset
+		line += item.Name()
+
 		if item.IsDir() {
-			line += "\n" + item.Draw(includeFiles)
+			line += "\n" + item.Draw(includeFiles, preffix + offset)
 		} else {
 			size := "(empty)"
 			if item.Size() > int(0) {
@@ -123,8 +118,8 @@ func dirTree(out io.Writer, path string, printFiles bool) error {
 	if (ok != nil) {
 		panic("wrong path")
 	}
-	point := fileSystemPoint{path, path}
-	buffer := bytes.NewBufferString(point.Draw(printFiles))
+	point := fileSystemPoint{path}
+	buffer := bytes.NewBufferString(point.Draw(printFiles, ""))
 	out.Write(buffer.Bytes())
 
 	return nil
